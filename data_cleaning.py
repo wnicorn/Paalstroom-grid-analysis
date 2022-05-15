@@ -1,6 +1,7 @@
 import pandas as pd
 import os
 import time
+import matplotlib.pyplot as plt
 
 start = time.time()
 
@@ -27,6 +28,7 @@ else:
     ValueError('Language not recognized')
 
 include = voltages_phase + voltages_phase_n + [loading, sort]
+aspects = ['voltage', 'loading', 'fuse']
 
 voltage_max = 253
 voltage_min = 207
@@ -37,6 +39,7 @@ excel_files = [filename for filename in all_files if filename.endswith('fuses.xl
 
 # define scenarios
 scenarios = {}
+violations = {}
 nr = 1
 for filename in excel_files:
     scenarios[nr] = {'id': nr, 'file': filename,
@@ -45,15 +48,16 @@ for filename in excel_files:
                      }
     nr += 1
 
+# ------- Data Analysis -------
 # start loop per file (scenario)
 for scenario in scenarios.keys():
     entry = scenarios[scenario]
     file = entry['file']
 
     # pre-allocation
-    voltage_violations = {}
-    loading_violations = {trafo: 0}
-    fuse_violations = {}
+    violations['voltage'] = {sheets[0]: 0, sheets[2]: 0}
+    violations['loading'] = {sheets[1]: 0, trafo: 0}
+    violations['fuse'] = {sheets[3]: 0}
 
     df = {}
     # Analysis per Excel sheet
@@ -64,17 +68,13 @@ for scenario in scenarios.keys():
         df[elem] = df[elem][[name for name in include if name in df[elem].columns]]
         # drop rows that contain NaN values because they are not useful
         df[elem] = df[elem].dropna()
-        # initialize counting
-        voltage_violations[elem] = 0
-        loading_violations[elem] = 0
-        fuse_violations[elem] = 0
 
         # check voltages at nodes
         if elem == sheets[0]:
             for i in df[elem].index:
                 if all(x > 0 for x in df[elem][voltages_phase].loc[i].to_list()):
                     if any(x < 207.0 for x in df[elem][voltages_phase].loc[i].to_list()):
-                        voltage_violations[elem] += 1
+                        violations['voltage'][elem] += 1
                     # if single phase ?
 
         # check loading of cables and transformers
@@ -82,47 +82,75 @@ for scenario in scenarios.keys():
             for i in df[elem].index:
                 if df[elem].at[i, sort] == trafo:
                     if df[elem][loading].loc[i] > 100:
-                        loading_violations[trafo] += 1
+                        violations['loading'][trafo] += 1
                 else:
                     if df[elem][loading].loc[i] > 100:
-                        loading_violations[elem] += 1
+                        violations['loading'][elem] += 1
 
         # check voltages and loadings at connections (elements)
         if elem == sheets[2]:
             for i in df[elem].index:
                 if all(x > 0 for x in df[elem][voltages_phase_n].loc[i].to_list()):
                     if any(x < 207.0 for x in df[elem][voltages_phase_n].loc[i].to_list()):
-                        voltage_violations[elem] += 1
+                        violations['voltage'][elem] += 1
                     # if single phase ?
                 if df[elem][loading].loc[i] > 100:
-                    loading_violations[elem] += 1
+                    violations['loading'][elem] += 1
 
         # check fuses
         if elem == sheets[3]:
             for i in df[elem].index:
                 if df[elem][loading].loc[i] > 100:
-                    fuse_violations[elem] += 1
+                    violations['fuse'][elem] += 1
 
-    entry['voltage_violations'] = voltage_violations
-    entry['loading_violations'] = loading_violations
-    entry['fuse_violations'] = fuse_violations
-    entry['total_v_violations'] = sum(voltage_violations.values())
-    entry['total_l_violations'] = sum(loading_violations.values())
-    entry['total_f_violations'] = sum(fuse_violations.values())
+    # store split and total values
+    for x in aspects:
+        entry['{}_violations'.format(x)] = violations[x]
+        entry['total_{}_violations'.format(x[0])] = sum(violations[x].values())
 
     # print results
-    print('Scenario: ', entry['id'])
-    print('voltage violations: ', voltage_violations)
-    print('loading violations: ', loading_violations)
-    print('fuse violations: ', fuse_violations)
-    print('total voltage violations: ', entry['total_v_violations'])
-    print('total loading violations: ', entry['total_l_violations'])
-    print('total fuse violations: ', entry['total_f_violations'])
+    # print('Scenario: ', entry['id'])
+    # for x in aspects:
+        # print('{} violations: '.format(x), violations[x])
+        # print('total {} violations: '.format(x), entry['total_{}_violations'.format(x[0])])
+
+
+
+
+# ------- data aggregation -------
+# print(scenarios.values())
+
+columns = ['{}_violations'.format(x) for x in aspects]
+for x in aspects:
+    for a in scenarios[scenario]['{}_violations'.format(x)]:
+        columns.append('{}_violations_at_{}'.format(x, a))
+data = [[scenarios[i]['total_{}_violations'.format(x[0])] for x in aspects] for i in scenarios.keys()]
+for i in range(len(data)):
+    for x in aspects:
+        for a in scenarios[i + 1]['{}_violations'.format(x)].values():
+            data[i].append(a)
+df = pd.DataFrame(index=scenarios.keys(), columns=columns, data=data)
+print(df)
+
+# violation types
+triggers = {}
+for x in aspects:
+    triggers[x] = 0
+    for n in scenarios.values():
+        if sum(n['{}_violations'.format(x)].values()) > 0:
+            triggers[x] += 1
+    # print('# scenarios with violated {}s:'.format(x), triggers[x])
+
+
+
+# ------- Graphics -------
+
+# Plot pie chart % of types of violations
+fig1, ax1 = plt.subplots()
+ax1.pie(triggers.values(), labels=triggers.keys(), autopct='%1.1f%%') #, startangle=90)
+# plt.show()
 
 end = time.time()
 time = end-start
-print('time: ', round(time, 4))
-
-# --- Graphics ---
-
+# print('time: ', round(time, 4))
 
