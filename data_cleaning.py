@@ -10,7 +10,7 @@ start = time.time()
 
 # prep
 engine = 'openpyxl'
-language = 'English' # 'Nederlands'
+language = 'Nederlands' # 'Nederlands'
 if language == 'English':
     locations = ['Nodes', 'Branches', 'Elements', 'Switches and protections'] #, 'Hoofdkabels']
     loading = 'Load rate' #'Belastinggraad'
@@ -54,18 +54,25 @@ scenarios = {}
 # define tests
 tests = {}
 violations = {}
-# nr = 1
+nr = 0
 for filename in excel_files:
     label = re.match(r'result_(.+).xlsx$', filename).group(1)
     scenario = re.match(r'(.+)_\d+$', label).group(1)
-    nr = re.match(r'_(\d+)$', label).group(1)
-    # TODO: FIX!
-    # tests[nr] = {'id': label, 'file': filename,
-    #              'light': re.match(r'^(\s{3})', label).group(1),
-    #              'charger': re.match(r'_(.+)_\d+$', label).group(1),
-    #              'voltage_violations': {}, 'loading_violations': {}, 'fuse_violations': {},
-    #              'total_v_violations': 0, 'total_l_violations': 0, 'total_f_violations': 0}
-    # nr += 1
+    label_int = int(re.match(r'.+_(\d+)$', label).group(1))
+    if label_int < 10:
+        label_nr = '0'+str(label_int)
+        new_label = label[:-1]+label_nr
+    else:
+        label_nr = label_int
+        new_label = label
+
+    tests[nr] = {'id': new_label, 'file': filename,
+                 'light': re.match(r'^(.{3})_.+', new_label).group(1),
+                 'charger': re.match(r'.+_(.+)_\d+$', new_label).group(1),
+                 'nr': label_nr,
+                 'voltage_violations': {}, 'loading_violations': {}, 'fuse_violations': {},
+                 'total_v_violations': 0, 'total_l_violations': 0, 'total_f_violations': 0}
+    nr += 1
 
 # ------- Data Analysis -------
 
@@ -86,7 +93,7 @@ for test in tests.keys():
     # Analysis per Excel sheet (location)
     for elem in locations:
         # import files as dataframes per sheet
-        df[elem] = pd.read_excel(file, engine=engine, sheet_name=elem, header=0, skiprows=[1])
+        df[elem] = pd.read_excel(os.path.join(loc, file), engine=engine, sheet_name=elem, header=0, skiprows=[1])
         # only include relevant columns
         df[elem] = df[elem][[name for name in include if name in df[elem].columns]]
         # drop rows that contain NaN values because they are not useful
@@ -157,64 +164,52 @@ for x in aspects:
 #data = [[tests[i]['total_{}_violations'.format(x[0])] for x in aspects] for i in tests.keys()]
 
 data = []
-for i in range(len(tests)):  # test keys are integers from [1, ...]
+for i in range(len(tests)):  # test keys are integers from [0, ...]
     data.append([])
     for x in aspects:
-        bs = tests[i+1]['{}_violations'.format(x)].values()
-        tots = tests[i+1]['total_{}_violations'.format(x[0])]
+        bs = tests[i]['{}_violations'.format(x)].values()
+        tots = tests[i]['total_{}_violations'.format(x[0])]
         data[i].extend(bs)
         data[i].append(tots)
-df = pd.DataFrame(index=tests.keys(), columns=columns, data=data)
+index_labels = [tests[a]['id'] for a in range(len(tests))]
+df = pd.DataFrame(index=index_labels, columns=columns, data=data)
 
 # create a multi-index for nicer graph indexes:
 header = [aspects[0], aspects[0], aspects[0], aspects[1], aspects[1], aspects[1], aspects[2], aspects[2]]
 df.columns = pd.MultiIndex.from_tuples(list(zip(header, df.columns)), names=['Type', 'Location'])
-df.index.names = ['test']
-#   df.columns.set_levels(['b1','c1','f1'],level=1,inplace=True)
-# print(df.columns)
+df.index = [df.index.str[:3], df.index.str[4:-3], df.index.str[-2:]]
+df.rename_axis(['Light type', 'Charger power', 'Location'], inplace=True)
+df.sort_index()
 print(df)
 
-# violation types
-triggers = {}
-for x in aspects:
-    triggers[x] = 0
-    for n in tests.values():
-        if sum(n['{}_violations'.format(x)].values()) > 0:
-            triggers[x] += 1
-    # print('# tests with violated {}s:'.format(x), triggers[x])
-
+# aggregate to violation types for a test type
+totals = df.loc[:, df.columns.get_level_values(1) == 'Total']
+specifics = df.loc[:, df.columns.get_level_values(1) != 'Total']
+mean_totals = totals.groupby(level=['Light type', 'Charger power']).mean()
+mean_specifics = specifics.groupby(level=['Light type', 'Charger power']).mean()
+sum_totals = totals.groupby(level=['Light type', 'Charger power']).sum()
+sum_specifics = specifics.groupby(level=['Light type', 'Charger power']).sum()
 
 
 # ------- Graphics -------
 
 # Plot pie chart % of types of violations
 fig1, ax1 = plt.subplots()
-ax1.pie(triggers.values(), labels=triggers.keys(), autopct='%1.1f%%') #, startangle=90)
+ax1.pie(sum_totals.sum(axis=0), labels=list(sum_totals.columns.get_level_values(0)), autopct='%1.1f%%') #, startangle=90)
 plt.title('Violation type occurances')
-# plt.show()
+plt.show()
 
-
-# plot total stacked bar graph of totals
+# plot bar plot mean # general violations types per scenario type
 fig2, ax2 = plt.subplots()
-df.loc[:, df.columns.get_level_values(1) == 'Total'].plot(kind='bar', stacked=True, ax=ax2)
+mean_totals.plot(kind='bar', stacked=True, ax=ax2)
+plt.title('Average general violation types per scenario')
 plt.show()
 
-
+# plot bar plot mean # specific violations types per scenario type
 fig3, ax3 = plt.subplots()
-df.loc[:, df.columns.get_level_values(1) != 'Total'].plot(kind='bar', stacked=True, ax=ax3)
+mean_specifics.plot(kind='bar', stacked=True, ax=ax3)
+plt.title('Average specific violation types per scenario')
 plt.show()
-
-# aggregate to violation types for a test type
-
-test = 'P = x'
-start = 0
-end = 2
-selection = df.loc[start:end, df.columns.get_level_values(1) != 'Total']
-fig4, ax4 = plt.subplots()
-selection.mean().unstack().plot(kind='bar', stacked=True, ax=ax4)
-plt.title('Average violation types for tests {}'.format(test))
-plt.show()
-
 
 
 
@@ -223,5 +218,5 @@ plt.show()
 
 end = time.time()
 time = end-start
-# print('time: ', round(time, 4))
+print('time: ', round(time, 4))
 
