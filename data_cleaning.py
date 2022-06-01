@@ -1,7 +1,10 @@
 import pandas as pd
 import os
 import time
+import re
+import numpy as np
 import matplotlib.pyplot as plt
+import seaborn as sns
 
 start = time.time()
 
@@ -9,7 +12,7 @@ start = time.time()
 engine = 'openpyxl'
 language = 'English' # 'Nederlands'
 if language == 'English':
-    sheets = ['Nodes', 'Branches', 'Elements', 'Switches and protections'] #, 'Hoofdkabels']
+    locations = ['Nodes', 'Branches', 'Elements', 'Switches and protections'] #, 'Hoofdkabels']
     loading = 'Load rate' #'Belastinggraad'
     voltages_phase = ['UL1', 'UL2', 'UL3']
     voltages_phase_n = ['UL1N', 'UL2N', 'UL3N']
@@ -17,7 +20,7 @@ if language == 'English':
     trafo = 'transformer'
     cable = 'cable'
 elif language == 'Nederlands':
-    sheets = ['Knooppunten', 'Takken', 'Elementen', 'Schakelaars en beveiligingen'] #, 'Hoofdkabels']
+    locations = ['Knooppunten', 'Takken', 'Elementen', 'Schakelaars en beveiligingen'] #, 'Hoofdkabels']
     loading = 'Belastinggraad'
     voltages_phase = ['UL1', 'UL2', 'UL3']
     voltages_phase_n = ['UL1N', 'UL2N', 'UL3N']
@@ -28,40 +31,60 @@ else:
     ValueError('Language not recognized')
 
 include = voltages_phase + voltages_phase_n + [loading, sort]
-aspects = ['voltage', 'loading', 'fuse']
+aspects = ['Voltage', 'Loading', 'Fuse']
 
 voltage_max = 253
 voltage_min = 207
 
-cwd = os.getcwd()
-all_files = os.listdir(cwd)
-excel_files = [filename for filename in all_files if filename.endswith('fuses.xlsx')]
+# cwd = os.getcwd()
+loc = 'C:/Users/Elise/Desktop/Gaia/'
+all_files = os.listdir(loc)
+excel_files = [filename for filename in all_files if filename.endswith('.xlsx')]
 
 # define scenarios
-scenarios = {}
-violations = {}
-nr = 1
+scenarios_listed = []
+nrs_listed = []
 for filename in excel_files:
-    scenarios[nr] = {'id': nr, 'file': filename,
-                     'voltage_violations': {}, 'loading_violations': {}, 'fuse_violations': {},
-                     'total_v_violations': 0, 'total_l_violations': 0, 'total_f_violations': 0,
-                     }
-    nr += 1
+    scenarios_listed.append(re.match(r'result_(.+)_\d+\.xlsx$', filename).group(1))
+    nrs_listed.append(re.match(r'result_.+_(\d+)\.xlsx$', filename).group(1))
+scenario_types = np.unique(np.array(scenarios_listed))
+nrs = np.sort(np.unique(np.array(nrs_listed)).astype(int))
+scenarios = {}
+
+# define tests
+tests = {}
+violations = {}
+# nr = 1
+for filename in excel_files:
+    label = re.match(r'result_(.+).xlsx$', filename).group(1)
+    scenario = re.match(r'(.+)_\d+$', label).group(1)
+    nr = re.match(r'_(\d+)$', label).group(1)
+    # TODO: FIX!
+    # tests[nr] = {'id': label, 'file': filename,
+    #              'light': re.match(r'^(\s{3})', label).group(1),
+    #              'charger': re.match(r'_(.+)_\d+$', label).group(1),
+    #              'voltage_violations': {}, 'loading_violations': {}, 'fuse_violations': {},
+    #              'total_v_violations': 0, 'total_l_violations': 0, 'total_f_violations': 0}
+    # nr += 1
 
 # ------- Data Analysis -------
-# start loop per file (scenario)
-for scenario in scenarios.keys():
-    entry = scenarios[scenario]
+
+scenarios = {}
+
+# start loop per file (test)
+for test in tests.keys():
+    entry = tests[test]
     file = entry['file']
+    scenario = re.match(r'result_(.+)_\d+.xlsx$', file).group(1)
 
     # pre-allocation
-    violations['voltage'] = {sheets[0]: 0, sheets[2]: 0}
-    violations['loading'] = {sheets[1]: 0, trafo: 0}
-    violations['fuse'] = {sheets[3]: 0}
+    violations[aspects[0]] = {locations[0]: 0, locations[2]: 0}
+    violations[aspects[1]] = {locations[1]: 0, trafo: 0}
+    violations[aspects[2]] = {locations[3]: 0}
 
     df = {}
-    # Analysis per Excel sheet
-    for elem in sheets:
+    # Analysis per Excel sheet (location)
+    for elem in locations:
         # import files as dataframes per sheet
         df[elem] = pd.read_excel(file, engine=engine, sheet_name=elem, header=0, skiprows=[1])
         # only include relevant columns
@@ -70,38 +93,38 @@ for scenario in scenarios.keys():
         df[elem] = df[elem].dropna()
 
         # check voltages at nodes
-        if elem == sheets[0]:
+        if elem == locations[0]:
             for i in df[elem].index:
                 if all(x > 0 for x in df[elem][voltages_phase].loc[i].to_list()):
                     if any(x < 207.0 for x in df[elem][voltages_phase].loc[i].to_list()):
-                        violations['voltage'][elem] += 1
+                        violations[aspects[0]][elem] += 1
                     # if single phase ?
 
         # check loading of cables and transformers
-        if elem == sheets[1]:
+        if elem == locations[1]:
             for i in df[elem].index:
                 if df[elem].at[i, sort] == trafo:
                     if df[elem][loading].loc[i] > 100:
-                        violations['loading'][trafo] += 1
+                        violations[aspects[1]][trafo] += 1
                 else:
                     if df[elem][loading].loc[i] > 100:
-                        violations['loading'][elem] += 1
+                        violations[aspects[1]][elem] += 1
 
         # check voltages and loadings at connections (elements)
-        if elem == sheets[2]:
+        if elem == locations[2]:
             for i in df[elem].index:
                 if all(x > 0 for x in df[elem][voltages_phase_n].loc[i].to_list()):
                     if any(x < 207.0 for x in df[elem][voltages_phase_n].loc[i].to_list()):
-                        violations['voltage'][elem] += 1
+                        violations[aspects[0]][elem] += 1
                     # if single phase ?
                 if df[elem][loading].loc[i] > 100:
-                    violations['loading'][elem] += 1
+                    violations[aspects[1]][elem] += 1
 
         # check fuses
-        if elem == sheets[3]:
+        if elem == locations[3]:
             for i in df[elem].index:
                 if df[elem][loading].loc[i] > 100:
-                    violations['fuse'][elem] += 1
+                    violations[aspects[2]][elem] += 1
 
     # store split and total values
     for x in aspects:
@@ -109,37 +132,56 @@ for scenario in scenarios.keys():
         entry['total_{}_violations'.format(x[0])] = sum(violations[x].values())
 
     # print results
-    # print('Scenario: ', entry['id'])
+    # print('test: ', entry['id'])
     # for x in aspects:
-        # print('{} violations: '.format(x), violations[x])
-        # print('total {} violations: '.format(x), entry['total_{}_violations'.format(x[0])])
-
+    #     print('{} violations: '.format(x))#, violations[x])
+    #     for a in violations[x].keys():
+    #         print(' ', a,':', violations[x][a])
+    #     print('total {} violations: '.format(x), entry['total_{}_violations'.format(x[0])])
 
 
 
 # ------- data aggregation -------
-# print(scenarios.values())
+#   print(tests.values())
 
-columns = ['{}_violations'.format(x) for x in aspects]
+columns = []  # '{}_violations'.format(x) for x in aspects
 for x in aspects:
-    for a in scenarios[scenario]['{}_violations'.format(x)]:
-        columns.append('{}_violations_at_{}'.format(x, a))
-data = [[scenarios[i]['total_{}_violations'.format(x[0])] for x in aspects] for i in scenarios.keys()]
-for i in range(len(data)):
+    for a in tests[test]['{}_violations'.format(x)]:
+        if a == 'Switches and protections':
+            columns.append('Feeders')
+        elif a == 'transformer':
+            columns.append('Transformer')
+        else:
+            columns.append('{}'.format(a))
+    columns.append('Total')
+#data = [[tests[i]['total_{}_violations'.format(x[0])] for x in aspects] for i in tests.keys()]
+
+data = []
+for i in range(len(tests)):  # test keys are integers from [1, ...]
+    data.append([])
     for x in aspects:
-        for a in scenarios[i + 1]['{}_violations'.format(x)].values():
-            data[i].append(a)
-df = pd.DataFrame(index=scenarios.keys(), columns=columns, data=data)
+        bs = tests[i+1]['{}_violations'.format(x)].values()
+        tots = tests[i+1]['total_{}_violations'.format(x[0])]
+        data[i].extend(bs)
+        data[i].append(tots)
+df = pd.DataFrame(index=tests.keys(), columns=columns, data=data)
+
+# create a multi-index for nicer graph indexes:
+header = [aspects[0], aspects[0], aspects[0], aspects[1], aspects[1], aspects[1], aspects[2], aspects[2]]
+df.columns = pd.MultiIndex.from_tuples(list(zip(header, df.columns)), names=['Type', 'Location'])
+df.index.names = ['test']
+#   df.columns.set_levels(['b1','c1','f1'],level=1,inplace=True)
+# print(df.columns)
 print(df)
 
 # violation types
 triggers = {}
 for x in aspects:
     triggers[x] = 0
-    for n in scenarios.values():
+    for n in tests.values():
         if sum(n['{}_violations'.format(x)].values()) > 0:
             triggers[x] += 1
-    # print('# scenarios with violated {}s:'.format(x), triggers[x])
+    # print('# tests with violated {}s:'.format(x), triggers[x])
 
 
 
@@ -148,7 +190,36 @@ for x in aspects:
 # Plot pie chart % of types of violations
 fig1, ax1 = plt.subplots()
 ax1.pie(triggers.values(), labels=triggers.keys(), autopct='%1.1f%%') #, startangle=90)
+plt.title('Violation type occurances')
 # plt.show()
+
+
+# plot total stacked bar graph of totals
+fig2, ax2 = plt.subplots()
+df.loc[:, df.columns.get_level_values(1) == 'Total'].plot(kind='bar', stacked=True, ax=ax2)
+plt.show()
+
+
+fig3, ax3 = plt.subplots()
+df.loc[:, df.columns.get_level_values(1) != 'Total'].plot(kind='bar', stacked=True, ax=ax3)
+plt.show()
+
+# aggregate to violation types for a test type
+
+test = 'P = x'
+start = 0
+end = 2
+selection = df.loc[start:end, df.columns.get_level_values(1) != 'Total']
+fig4, ax4 = plt.subplots()
+selection.mean().unstack().plot(kind='bar', stacked=True, ax=ax4)
+plt.title('Average violation types for tests {}'.format(test))
+plt.show()
+
+
+
+
+
+
 
 end = time.time()
 time = end-start
