@@ -35,16 +35,16 @@ include = voltages_phase + voltages_phase_n + [loading, sort]
 aspects = ['Voltage', 'Loading', 'Fuse']
 
 # network categories
-cat_1 = 'Cat 1'
-cat_2 = 'Cat 2'
+cat_1 = 'Operation'
+cat_2 = 'Size' # <> 10 lamp posts
 
 voltage_max = 253
 voltage_min = 207
 
 # cwd = os.getcwd()
 common_directory = 'C:/Users/Elise/Desktop/Gaia/'  # where folders with excel files are saves from the Gaia results
-networks = {'Nederweert hulwn': {cat_1: 'a', cat_2: 'b'},
-            'Nederweert laurs': {cat_1: 'b', cat_2: 'a'}
+networks = {'Nederweert hulwn': {cat_1: 'Radial', cat_2: 'Small'},
+            'Nederweert laurs': {cat_1: 'Meshed', cat_2: 'Large'}
             }  # keys must correspond to folder names at the directory location
 
 # start loop per network analyzed (folder of excel files from Gaia)
@@ -194,6 +194,45 @@ specifics_led = df.loc[df.index.get_level_values('Light type') == 'LED', df.colu
 
 tot_led_cat1_charger_mean = totals_led.groupby(level=[cat_1, 'Charger power']).mean()
 spe_led_cat1_charger_mean = specifics_led.groupby(level=[cat_1, 'Charger power']).mean()
+
+
+# Print numerical results
+print('Total:')
+print('# tests: ', len(df))
+print('# violations: ', len(df)-len(df[df[df.columns] == 0].dropna(inplace=False)))
+print(round((len(df)-len(df[df[df.columns] == 0].dropna(inplace=False)))/len(df)*100,2),'%')
+
+print('LED:')
+data = df.loc[df.index.get_level_values('Light type') == 'LED']
+if len(data) > 0:
+    print('# tests: ', len(data))
+    print('# violations: ', len(data)-len(data[data[data.columns] == 0].dropna(inplace=False)))
+    print(round((len(data)-len(data[data[data.columns] == 0].dropna(inplace=False)))/len(data)*100,2),'%')
+else: print('No tests available')
+
+print('old:')
+data = df.loc[df.index.get_level_values('Light type') == 'old']
+if len(data) > 0:
+    print('# tests: ', len(data))
+    print('# violations: ', len(data)-len(data[data[data.columns] == 0].dropna(inplace=False)))
+    print(round((len(data)-len(data[data[data.columns] == 0].dropna(inplace=False)))/len(data)*100,2),'%')
+else: print('No tests available')
+
+print('Small:')
+data = df.loc[df.index.get_level_values(cat_2) == 'Small']
+if len(data) > 0:
+    print('# tests: ', len(data))
+    print('# violations: ', len(data)-len(data[data[data.columns] == 0].dropna(inplace=False)))
+    print(round((len(data)-len(data[data[data.columns] == 0].dropna(inplace=False)))/len(data)*100,2),'%')
+else: print('No tests available')
+
+print('Large:')
+data = df.loc[df.index.get_level_values(cat_2) == 'Large']
+if len(data) > 0:
+    print('# tests: ', len(data))
+    print('# violations: ', len(data)-len(data[data[data.columns] == 0].dropna(inplace=False)))
+    print(round((len(data)-len(data[data[data.columns] == 0].dropna(inplace=False)))/len(data)*100,2),'%')
+else: print('No tests available')
 
 
 
