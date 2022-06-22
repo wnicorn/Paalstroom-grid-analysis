@@ -1,6 +1,6 @@
-'''
+"""
 Author: Elise van Wijngaarden
-Last updated: 16 june 2022
+Last updated: 18 june 2022
 
 INSTRUCTIONS:
 Before performing the Gaia simulations, please run the 'network_types.py'
@@ -8,17 +8,23 @@ to create the correct directories for saving the results.
 
 Before running this script, the Gaia simulations must tbe run.
 
-If the instructions above are met, only the 'Input' here at the top needs to be updated in order to run this script.
+The variables under the 'Input' section right below needs to be updated in order to run this script:
+- Edit 'results_dir' to the common folder containing all the result folders with the result excels.
+- Edit 'network_files_dir' to the location where all the Gaia network files are.
+- Edit 'language' to the language in which the Gaia results have been saved (English or Nederlands).
 
-'''
+If the instructions above are met, this script saves a csv file with the cleaned results.
+Afterwards, the Graphics script can be run.
+
+(Time for teh first ~40 network files: 2116 sec > 35min run time)
+"""
 
 # ------------------- Input: -------------------------
-# Gaia results folders location:
-common_directory = 'C:/Users/Elise/Desktop/Gaia/'
+# Common Gaia results folders location:
+results_dir = 'C:/Users/Elise/Desktop/Gaia/'
 
-# characteristics file:
-characteristics_dir = 'G:/.shortcut-targets-by-id/19-JqZkBCPZFbYYHLjE-rEmM8zRKqqge7/5LEF0 - SIP - Paalstroom/Research/2 Technical Evaluation/Grid/Collected Data/Enexis/Round 2/'
-characteristics_excel_name = '20220307_Results_SL_R2102-02_gG-Light.xlsx'
+# Input files location:
+network_files_dir = 'G:/.shortcut-targets-by-id/19-JqZkBCPZFbYYHLjE-rEmM8zRKqqge7/5LEF0 - SIP - Paalstroom/Research/2 Technical Evaluation/Grid/Collected Data/Enexis/Round 2/additional' # TODO: remove afterwards
 
 # language used in results excels:
 language = 'English'  # 'English' or 'Nederlands'
@@ -30,12 +36,9 @@ import pandas as pd
 import os
 import time
 import re
-import numpy as np
-import matplotlib.pyplot as plt
-from itertools import groupby
-import seaborn as sns
 
 start = time.time()
+print(time, 'Started data cleaning...')
 
 # prep
 engine = 'openpyxl'
@@ -64,19 +67,15 @@ aspects = ['Voltage', 'Loading', 'Fuse']
 voltage_max = 253
 voltage_min = 207
 
-# load characteristics data
-list_files = os.listdir(characteristics_dir)
+# load all network file names for identification
+list_files = os.listdir(network_files_dir)
 gnf_file_names = [filename[-14:-4] for filename in list_files if filename.endswith('.gnf')]
 
-char_file = os.path.join(characteristics_dir, characteristics_excel_name)
-char_df = pd.read_excel(char_file, sheet_name='Steekproef', engine='openpyxl', header=0)
-char_df = char_df[['KABELGROEP', 'NETSTATION', 'NETSTATION_STEDELIJKHEID', 'NETWERKTYPE', 'KABELGROEP_AANLEGJAAR', 'KABELGROEP_DECENIUM',
-         'KABELGROEP_LENGTE', 'NODE_MAX_FOUTSPANNING', 'N_OV_AANSLUITING']]
-
 # start loop per network analyzed (folder of excel files from Gaia)
+print(time, 'Starting counting violations...')
 networks = {}
 for network in gnf_file_names:
-    network_folder = os.path.join(common_directory, network)
+    network_folder = os.path.join(results_dir, network)
     list_files = os.listdir(network_folder)
     excel_files = [filename for filename in list_files if filename.endswith('.xlsx')]
 
@@ -84,7 +83,8 @@ for network in gnf_file_names:
     tests = {}  # later saved to networks[network]['tests']
     nr = 0
     for filename in excel_files:
-        cable_group = re.match(r'(.+)_result_.+.xlsx$', filename).group(1)
+        cable_group = re.match(r'(.+)_\d+_result_.+.xlsx$', filename).group(1)
+        n_ov = re.match(r'.+_(\d+)_result_.+.xlsx$', filename).group(1)
         label = re.match(r'.+_result_(.+).xlsx$', filename).group(1)
         scenario = re.match(r'(.+)_\d+$', label).group(1)
         label_int = int(re.match(r'.+_(\d+)$', label).group(1))
@@ -95,7 +95,7 @@ for network in gnf_file_names:
             label_nr = label_int
             new_label = label
 
-        tests[nr] = {'id': new_label, 'cable_group': cable_group,
+        tests[nr] = {'id': new_label, 'cable_group': cable_group, 'n_ov': n_ov,
                      'file': filename,
                      'light': re.match(r'^(.{3})_.+', new_label).group(1),
                      'charger': re.match(r'.+_(.+)_\d+$', new_label).group(1),
@@ -169,7 +169,7 @@ for network in gnf_file_names:
             tests[test]['total_{}_violations'.format(x[0])] = sum(violations[x].values())
 
     networks[network]['tests'] = tests
-
+    print(time, ' Done:', network)
 
 # ------- data aggregation -------
 
@@ -178,22 +178,22 @@ tests = networks[active_networks[0]]['tests']
 columns = []
 for x in aspects:
     for a in tests[0]['{}_violations'.format(x)]:
-        if a == 'Switches and protections':
-            columns.append('Feeders')
-        elif a == 'transformer':
-            columns.append('Transformer')
-        else:
-            columns.append('{}'.format(a))
+        columns.append('{}'.format(a))
     columns.append('Total')
 
+print(time, 'Starting combining data...')
 dfs = {}
 for network in active_networks:
     tests = networks[network]['tests']
-    index_labels = [tests[a]['id'] for a in tests.keys()]
-    df = pd.DataFrame(index=index_labels, columns=columns)
+    index_nr = [tests[a]['id'] for a in tests.keys()]
+    df = pd.DataFrame(index=index_nr, columns=columns)
     # create a multi-index for nicer graph indexes:
-    header = [aspects[0], aspects[0], aspects[0], aspects[1], aspects[1], aspects[1], aspects[1], aspects[2], aspects[2]]
-    df.columns = pd.MultiIndex.from_tuples(list(zip(header, df.columns)), names=['Type', 'Location'])
+    header = [aspects[0], aspects[0], aspects[0], aspects[1], aspects[1], aspects[1], aspects[1], aspects[2],aspects[2]]
+    df.columns = pd.MultiIndex.from_tuples(list(zip(header, df.columns)), names=['Type', 'Scenario'])
+
+    chars = {}
+    for char in list(tests[0].keys())[1:3]:
+        chars[char] = [tests[a][char] for a in tests.keys()]
 
     for i in tests.keys():
         data = []
@@ -203,140 +203,24 @@ for network in active_networks:
                     '{}'.format(elem)]
             df.loc[tests[i]['id'], ('{}'.format(x), 'Total')] = tests[i]['total_{}_violations'.format(x[0])]
 
-    df.index = [[network for l in df.index], df.index.str[:3], df.index.str[4:-3], df.index.str[-2:]]
-    df.rename_axis(['Network', 'Light type', 'Charger power', 'Location'], inplace=True)
+    df.index = [list(range(len(df.index))), [network for n in df.index], chars['cable_group'], chars['n_ov'], df.index.str[:3], df.index.str[4:-3], df.index.str[-2:]]
+    df.rename_axis(['index', 'Network', 'Cable group', 'Connections', 'Light type', 'Charger power', 'Location'], inplace=True)
     df.sort_index()
 
     dfs[network] = df
+    print(time, ' Done:', network)
 df_combined = pd.DataFrame()
 for df in dfs.values():
     df_combined = pd.concat([df_combined, df])
 
 
-# aggregate to violation types for a test type
-df = df_combined.apply(pd.to_numeric)
-totals = df.loc[:, df.columns.get_level_values(1) == 'Total']
-specifics = df.loc[:, df.columns.get_level_values(1) != 'Total']
-
-tot_light_charger_mean = totals.groupby(level=['Light type', 'Charger power']).mean()
-spe_light_charger_mean = specifics.groupby(level=['Light type', 'Charger power']).mean()
-
-totals_led = df.loc[df.index.get_level_values('Light type') == 'LED', df.columns.get_level_values(1) == 'Total']
-specifics_led = df.loc[df.index.get_level_values('Light type') == 'LED', df.columns.get_level_values(1) != 'Total']
-
-# tot_led_cat1_charger_mean = totals_led.groupby(level=[cat_1, 'Charger power']).mean()
-# spe_led_cat1_charger_mean = specifics_led.groupby(level=[cat_1, 'Charger power']).mean()
-
-# Print numerical results
-df_nr_results = pd.DataFrame(index=['tests', 'violations', 'ratio [%]'])
-
-df_nr_results['Total'] = [int(len(df)), int(len(df) - len(df[df[df.columns] == 0].dropna(inplace=False))), round((len(df) - len(df[df[df.columns] == 0].dropna(inplace=False))) / len(df) * 100, 2)]
-
-data = df.loc[df.index.get_level_values('Light type') == 'LED']
-if len(data) > 0:
-    df_nr_results['LED'] = [int(len(data)), int(len(data) - len(data[data[data.columns] == 0].dropna(inplace=False))),
-                            round((len(data) - len(data[data[data.columns] == 0].dropna(inplace=False))) / len(data) *100, 2)]
-
-data = df.loc[df.index.get_level_values('Light type') == 'old']
-if len(data) > 0:
-    df_nr_results['old'] = [int(len(data)), int(len(data) - len(data[data[data.columns] == 0].dropna(inplace=False))),
-                            round((len(data) - len(data[data[data.columns] == 0].dropna(inplace=False))) / len(data) *100, 2)]
-
-# data = df.loc[df.index.get_level_values(cat_2) == 'Small']
-# if len(data) > 0:
-#     df_nr_results['Small'] = [int(len(data)), int(len(data) - len(data[data[data.columns] == 0].dropna(inplace=False))),
-#                             round((len(data) - len(data[data[data.columns] == 0].dropna(inplace=False))) / len(data) *100, 2)]
-#
-# data = df.loc[df.index.get_level_values(cat_2) == 'Large']
-# if len(data) > 0:
-#     df_nr_results['Large'] = [int(len(data)), int(len(data) - len(data[data[data.columns] == 0].dropna(inplace=False))),
-#                             round((len(data) - len(data[data[data.columns] == 0].dropna(inplace=False))) / len(data) *100, 2)]
-
-
-# -------------- Graphs --------------
-def get_pie_labels(labels, sizes):
-    labels = [f'{l}, {s:0.1f}%' for l, s in zip(labels, sizes)]
-    plt.legend(bbox_to_anchor=(0.85, 1), loc='upper left', labels=labels)
-
-
-# Plot pie chart % of general types of violations
-fig1, ax1 = plt.subplots(figsize=(6, 4))
-ax1.pie(totals.sum(axis=0), autopct='%1.1f%%', pctdistance=0.85)
-plt.title('General violation type occurances')
-plt.legend(list(totals.columns.get_level_values(0)))
-plt.show()
-# Plot pie chart % of specific types of violations
-fig4, ax4 = plt.subplots(figsize=(6, 4))
-plt.pie(specifics.sum(axis=0), autopct='%1.1f%%', pctdistance=0.85)
-plt.title('Specific violation type occurances')
-plt.legend(list(specifics.columns.get_level_values(0)))
-plt.show()
-
-
-# define operations to add category lines to bar plots:
-def add_line(ax, xpos, ypos):
-    line = plt.Line2D([xpos, xpos], [ypos + .095, ypos],
-                      transform=ax.transAxes, color='black')
-    line.set_clip_on(False)  # [... + .1, ...]
-    ax.add_line(line)
-
-
-def label_len(my_index, level):
-    labels = my_index.get_level_values(level)
-    return [(k, sum(1 for i in g)) for k, g in groupby(labels)]
-
-
-def label_group_bar_table(ax, fig, df):
-    labels = ['' for item in ax.get_xticklabels()]
-    ax.set_xticklabels(labels)
-    ypos = -.1
-    scale = 1. / df.index.size
-    for level in range(df.index.nlevels)[::-1]:
-        pos = 0
-        for label, rpos in label_len(df.index, level):
-            lxpos = (pos + .5 * rpos) * scale
-            ax.text(lxpos, ypos, label, ha='center', transform=ax.transAxes)
-            add_line(ax, pos * scale, ypos)
-            pos += rpos
-        add_line(ax, pos * scale, ypos)
-        ypos -= .1
-    ax.xaxis.set_label_coords(0.5, -0.25)
-    fig.subplots_adjust(bottom=.1 * df.index.nlevels)
-
-
-# plot bar plot mean # general violations types per scenario type
-data = tot_light_charger_mean
-fig2, ax2 = plt.subplots(figsize=(6, 4))
-data.set_axis(data.columns.map(', '.join), axis=1, inplace=False).plot(kind='bar', stacked=True, ax=ax2)
-plt.title('Average general violation types per scenario')
-label_group_bar_table(ax2, fig2, tot_light_charger_mean)
-plt.show()
-
-# plot bar plot mean # specific violations types per scenario type
-data = spe_light_charger_mean
-fig3, ax3 = plt.subplots(figsize=(6, 4))
-data.set_axis(data.columns.map(', '.join), axis=1, inplace=False).plot(kind='bar',
-                                                                                                           stacked=True,
-                                                                                                           ax=ax3)
-plt.title('Average specific violation types per scenario')
-label_group_bar_table(ax3, fig3, spe_light_charger_mean)
-plt.show()
-
-# # plot bar plot mean # general violations types per network type for LED scenario
-# fig5, ax5 = plt.subplots(figsize=(6, 4))
-# tot_led_cat1_charger_mean.set_axis(tot_led_cat1_charger_mean.columns.map(', '.join), axis=1, inplace=False).plot(
-#     kind='bar', stacked=True, ax=ax5)
-# plt.title('Average general violation types per scenario')
-# label_group_bar_table(ax5, fig5, tot_led_cat1_charger_mean)
-# plt.show()
-# # plot bar plot mean # specific violations types per network type for LED scenario
-# fig6, ax6 = plt.subplots(figsize=(6, 4))
-# spe_led_cat1_charger_mean.set_axis(spe_led_cat1_charger_mean.columns.map(', '.join), axis=1, inplace=False).plot(
-#     kind='bar', stacked=True, ax=ax6)
-# plt.title('Average specific violation types per scenario')
-# label_group_bar_table(ax6, fig6, spe_led_cat1_charger_mean)
-# plt.show()
+# Save numeric values in dataframe to csv:
+data = df_combined.apply(pd.to_numeric)
+# data.rename(columns={'Switches and protections': 'Feeder', trafo: 'Transformer'})
+filename = 'cleaned_results_2.csv'
+data.to_csv(os.path.join(results_dir, filename))
+print('Saved results to:', filename)
 
 end = time.time()
 time = end - start
-print('time: ', round(time, 2), 'sec')
+print('All done! \ntime: ', round(time/60, 2), 'min')
