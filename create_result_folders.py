@@ -1,6 +1,6 @@
 """
 Author: Elise van Wijngaarden
-Updated: 17 June 2022
+Updated: 20 June 2022
 
 This script creates the folders that are needed in order to save the Gaia simulation results in the correct places.
 
