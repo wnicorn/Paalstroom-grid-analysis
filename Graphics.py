@@ -5,45 +5,42 @@ import numpy as np
 import time
 import matplotlib.pyplot as plt
 from itertools import groupby
+from pandas.api.types import CategoricalDtype
 
 """
 Author: Elise van Wijngaarden
-Last updated: 21 june 2022
+Last updated: 23 june 2022
 
 INSTRUCTIONS:
-Before performing the Gaia simulations, please run the 'network_types.py'
-to create the correct directories for saving the results.
-
 Before running this script, the Gaia simulations and the data_cleaning.py script must be run.
+(Before performing the Gaia simulations, please run the 'create_result_folders.py'
+to create the correct directories for saving the results.)
+
 
 The variables under the 'Input' section right below needs to be updated in order to run this script:
 - Edit 'results_dir' to the common folder containing all the result folders with the result excels.
-- Edit 'char_dir' to the location where the Gaia characteristics file is.
+- Edit 'char_dir' to the location where the Gaia characteristics excel-file is.
 - Edit 'char_excel_name' only if the filename has changed.
 
-If the instructions above are met, this script outputs three diagrams in the IDE.
+If the instructions above are met, this script outputs text tables and diagrams to the IDE. 
 
 """
 
 # ------------------- Input: -------------------------
 # Common Gaia results folders location:
-results_dir = 'C:/Users/Elise/Desktop/Gaia/'
-results_dir_2 = 'C:/Users/Elise/Desktop/Gaia/additional'  # TODO: remove afterwards
+results_dir = 'C:/resultsdir/'
 
 # characteristics file:
-char_dir = 'G:/.shortcut-targets-by-id/19-JqZkBCPZFbYYHLjE-rEmM8zRKqqge7/5LEF0 - SIP - Paalstroom/Research/2 Technical Evaluation/Grid/Collected Data/Enexis/Round 2/'
+char_dir = 'C:/chardir/'
 char_excel_name = '20220307_Results_SL_R2102-02_gG-Light.xlsx'
 
 # ---------------------------------------------------
 
-# start = time.time()
+start = time.time()
 
 # import results file
 filename = 'cleaned_results.csv'
-filename_2 = 'cleaned_results_2.csv'  # TODO: remove afterwards
-df_results = pd.read_csv(os.path.join(results_dir, filename), index_col=[0, 1, 2, 3, 4, 5, 6], header=[0, 1])
-df_results_2 = pd.read_csv(os.path.join(results_dir, filename_2), index_col=[0, 1, 2, 3, 4, 5, 6], header=[0, 1])  # TODO: remove afterwards
-df_results = pd.concat([df_results, df_results_2])  # TODO: remove afterwards
+df_results = pd.read_csv(os.path.join(results_dir, filename), index_col=[0], header=[0, 1])  # , 1, 2, 3, 4, 5, 6
 
 # fix some things...:
 df_results = df_results.droplevel(level=0, axis=0).reset_index(col_level=1, col_fill='Scenario').sort_index(axis=0)
@@ -53,12 +50,12 @@ df_results.columns.get_level_values(1).name = 'Specific'
 df_results = df_results.drop(columns=[('Loading', 'Transformer'), ('Fuse', 'Feeders')])
 df_results = df_results.rename(columns={'Switches and protections': 'Feeder', 'transformer': 'Transformer'})
 df_results[('Scenario', 'Charger power')] = df_results[('Scenario', 'Charger power')].astype(str).replace(['_', '\.0'], '', regex=True).astype(float)
-# import Enexis characteristics
+
+# import Enexis characteristics:
 df_char = pd.read_excel(os.path.join(char_dir, char_excel_name), engine='openpyxl', sheet_name='SL_gG_Cablegroup',
                         header=[0])
 df_char = df_char[['KABELGROEP', 'NETSTATION_VESTIGING', 'NETSTATION_STEDELIJKHEID', 'NETWERKTYPE',
-                   'KABELGROEP_DECENIUM', 'KABELGROEP_LENGTE', 'NODE_MAX_FOUTSPANNING', 'N_OV_AANSLUITING']
-].dropna(how='all')  # 'NETSTATION', 'KABELGROEP_AANLEGJAAR',
+                   'KABELGROEP_DECENIUM', 'KABELGROEP_LENGTE', 'NODE_MAX_FOUTSPANNING', 'N_OV_AANSLUITING']].dropna(how='all')
 df_char = df_char.loc[df_char['KABELGROEP'].isin(df_results[('Scenario', 'Cable group')])]
 df_char['KABELGROEP_LENGTE_TYPE'] = df_char['KABELGROEP_LENGTE']
 df_char['FOUTSPANNING_TYPE'] = df_char['NODE_MAX_FOUTSPANNING']
@@ -78,7 +75,7 @@ translate_urban = {
     'Weinig_stedelijk': 'Weakly urban',
     'Matig_stedelijk': 'Medium urban',
     'Sterk_stedelijk': 'Strongly urban',
-    'Zeer_sterk_stedelijk': 'Very strongly urban'
+    'Zeer_Sterk_stedelijk': 'Very strongly urban'
 }
 translate_columns = {
     'NETSTATION_STEDELIJKHEID': 'Urbanism',
@@ -88,7 +85,6 @@ translate_columns = {
     'FOUTSPANNING_TYPE': 'Cable type',
     'N_OV_AFGEROND': 'Connections',
 }
-
 
 # Check for cable groups existing in the char excel and add characteristics to results:
 for col in translate_columns.values():
@@ -111,7 +107,6 @@ print('Cable groups missing in char:', list(np.unique(missing)))
 df_results[('Characteristics', 'Urbanism')] = df_results[('Characteristics', 'Urbanism')].astype(str).replace(
     translate_urban, value=None)
 
-
 # define violation percentages
 aspects = ['Voltage', 'Loading', 'Fuse']
 df_res_percentages = df_results[['Scenario', 'Characteristics']].copy()
@@ -124,40 +119,31 @@ df_res_percentages.drop([('Total', 'Cable group')], axis=1, inplace=True)
 
 
 # --------------------- Numerical results ---------------------
+
 # Define aggregation shortcuts:
 def get_totals(df, lvl1_cols: list):
     return df.loc[:, df.columns.get_level_values(1).isin(['Total'] + lvl1_cols)]
-
 def get_specifics(df, scenario_cols: list):
     scenario_data = df[
         [('Scenario', coll) for coll in scenario_cols] + list(df.columns[df.columns.get_level_values(0).isin(aspects)])]
     return scenario_data[scenario_data.columns[~scenario_data.columns.get_level_values(1).isin(['Total'])]]
-
 def get_grouped_scenario(df, scenario_cols: list):
     return df.groupby(by=[('Scenario', elem) for elem in scenario_cols]).mean()
-
 def get_grouped(df, type: str, scenario_cols: list):
     return df.groupby(by=[(type, elem) for elem in scenario_cols]).mean()
-
 def get_scenario_is(df, scenario: str, item):
     return df.loc[df[('Scenario', scenario)] == item]
-
-
 def get_is(df, type, scenario: str, item):
     return df.loc[df[(type, scenario)] == item]
-
 def get_smaller_is(df, type: str, scenario: str, item):
     data = df.loc[df[(type, scenario)] != 'Unknown'].dropna()
     return data.loc[data[(type, scenario)].astype(int) <= item]
-
 def get_larger(df, type: str, scenario: str, item):
     data = df.loc[df[(type, scenario)] != 'Unknown'].dropna()
     return data.loc[data[(type, scenario)].astype(int) > item]
-
 def get_unknown(df, type: str, scenario: str):
     data = df.loc[df[(type, scenario)] == 'Unknown'].dropna()
     return data
-
 def get_statistics(data):
     clear = data.loc[data[aspects][data[aspects] == 0].dropna(axis=0, how='any').index, aspects + ['Scenario']].groupby(
         ('Scenario', 'Cable group')).mean()
@@ -182,8 +168,7 @@ print(nr_results)
 
 # Print numerical results: characteristics
 cp = [0.92, 2.3, 3.7]
-headers = ['Cable group tests', '{}kW: violated [%]'.format(cp[0]),
-           '{}kW: violated [%]'.format(cp[1]), '{}kW: violated [%]'.format(cp[2])]
+headers = ['Cable group tests', '{}kW: violated [%]'.format(cp[0]), '{}kW: violated [%]'.format(cp[1]), '{}kW: violated [%]'.format(cp[2])]
 charger_results = pd.DataFrame(index=headers)
 res_1_data = get_scenario_is(df_results, 'Charger power', cp[0])
 res_2_data = get_scenario_is(df_results, 'Charger power', cp[1])
@@ -219,17 +204,28 @@ if len(df_results) > 0:
     charger_results['until 30 lamps'] = get_all('smaller', 'Connections', 30)
     charger_results['> 30 lamps'] = get_all('larger', 'Connections', 30)
     charger_results['# lamps unknown'] = get_all('unknown', 'Connections', 30)
-charger_results['Total'] = get_statistics(res_1_data) + [get_statistics(res_2_data)[1]] + [get_statistics(res_3_data)[1]]
+    charger_results['Urbanism'] = get_all('is', 'Urbanism', 'Not urban')
+    charger_results['Urbanism'] = get_all('is', 'Urbanism', 'Medium  urban')
+    charger_results['Urbanism'] = get_all('is', 'Urbanism', 'Very Strongly urban')
+charger_results['Total'] = get_statistics(res_1_data) + [get_statistics(res_2_data)[1]] + [
+    get_statistics(res_3_data)[1]]
 charger_results = charger_results.T
 print(charger_results)
 # charger_results.to_clipboard()
 
-df = df_results.loc[df_results[('Characteristics', 'Connections')] != 'Unknown'].copy()
+df = df_results.loc[(df_results[('Characteristics', 'Connections')] != 'Unknown') & (
+        df_results[('Characteristics', 'Connections')] != 0)].copy()
 a = []
 for i in df.index:
-    a.append(df.loc[i, ('Scenario', 'Connections')] - df.loc[i, ('Characteristics', 'Connections')])
+    a.append((df.loc[i, ('Scenario', 'Connections')] - df.loc[i, ('Characteristics', 'Connections')]) / df.loc[
+        i, ('Characteristics', 'Connections')])
 df.loc[:, ('Characteristics', 'Diff')] = a
-df[('Characteristics', 'Diff')].describe()
+round(df[('Characteristics', 'Diff')].describe(), 2)
+nr_cable_groups = len(
+    df_results.loc[df_results[('Characteristics', 'Connections')] != 0].groupby(('Scenario', 'Cable group')).count())
+nr_networks = len(
+    df_results.loc[df_results[('Characteristics', 'Connections')] != 0].groupby(('Scenario', 'Network')).count())
+
 
 # --------------------- Graphs ---------------------
 
@@ -277,6 +273,7 @@ def get_grouped_char(df, char):
     df_2 = df_2.loc[df_2.index != 'Unknown'].astype(int)
     return df_2
 
+
 # Define colors
 colors_specific = ['#E76F51', '#EC8C74', '#1B655C', '#2A9D8F', '#4FD0C1', '#E9C46A', '#F4A261']  # 2, 3, 1
 colors_total = [colors_specific[0], colors_specific[3], colors_specific[5]]  # 3
@@ -294,51 +291,68 @@ ax2.set_title('Location of violation type occurances')
 ax2.legend(list(specifics.columns.get_level_values(1)), loc='upper left')
 plt.show()
 
-
 # plot bar plot mean # of specific violations types per scenario type
 scenario_cols = ['Light type', 'Charger power']
-fig2, ax4 = plt.subplots(1, 1, figsize=(8, 5))
+fig2, ax3 = plt.subplots(1, 1, figsize=(8, 5))
 data = get_grouped_scenario(get_specifics(df_res_percentages, scenario_cols), scenario_cols)
-data.set_axis(data.columns.map(', '.join), axis=1, inplace=False).plot(kind='bar', stacked=False, ax=ax4, color=colors_specific)
-ax4.set_title('Average frequency of violation types per scenario')
-label_group_bar_table(ax4, fig2, data)
-ax4.set_xlabel('Light type, Charger power [kW]')
-ax4.set_ylabel('Average % of locations in a cable group causing violation')
-ax4.legend(loc='upper left')
+data.set_axis(data.columns.map(', '.join), axis=1, inplace=False).plot(kind='bar', stacked=False, ax=ax3,
+                                                                       color=colors_specific)
+ax3.set_title('Average frequency of violation types per scenario')
+label_group_bar_table(ax3, fig2, data)
+ax3.set_xlabel('Light type, Charger power [kW]')
+ax3.set_ylabel('Average % of locations in a cable group causing violation')
+ax3.legend(loc='upper left')
 plt.show()
 
-
-# plot bar plot mean # general violations types per network size and age
+# plot bar plot mean # general violations types per network characterisation:
+# group data:
 df_age = get_grouped_char(df_res_percentages, 'Decade').reset_index()
 df_size = get_grouped_char(df_res_percentages, 'Length').reset_index()
 df_lamps = get_grouped_char(df_res_percentages, 'Connections').reset_index()
+df_urban = get_grouped_char(df_res_percentages, 'Urbanism').reset_index()
+# reorder urbanisation:
+cat_size_order = CategoricalDtype(['Not urban', 'Weakly urban', 'Medium urban', 'Strongly urban', 'Very strongly urban'], ordered=True)
+df_urban['Urbanism'] = df_urban['Urbanism'].astype(cat_size_order)
+df_urban = df_urban.sort_values('Urbanism')
+colors_urban = [colors_specific[-2]] + list(reversed(colors_specific[:2])) + list(reversed(colors_specific[2:4]))
 
-fig3, [ax7, ax8] = plt.subplots(1, 2, figsize=(11.2, 4))
-df_age['% violated'].plot(kind='bar', ax=ax7, color=colors_total[0])
-ax7.set_title('Network age')
+fig3, [ax4, ax5] = plt.subplots(1, 2, figsize=(11.2, 4))
+df_age['% violated'].plot(kind='bar', ax=ax4, color=colors_total[0])
+ax4.set_title('Network age')
 labels = ['{}'.format(int(x)) for x in df_age['Decade']]
-ax7.set_xticklabels(labels, rotation=0)
-ax7.set_xlabel('Decade of installation')
-ax7.set_ylabel('Average % of tests causing violation')
+ax4.set_xticklabels(labels, rotation=0)
+ax4.set_xlabel('Decade of installation')
+ax4.set_ylabel('Average % of tests causing violation')
 
-df_size['% violated'].plot(kind='bar', ax=ax8, color=colors_total[1])  # , color=colors_total[0])
-ax8.set_title('Network size')
+df_size['% violated'].plot(kind='bar', ax=ax5, color=colors_total[1])  # , color=colors_total[0])
+ax5.set_title('Network size')
 labels = ['{}'.format(int(x)) for x in df_size['Length']]
-ax8.set_xticklabels(labels, rotation=0)
-ax8.set_xlabel('Length of network cable groups [m]')
+ax5.set_xticklabels(labels, rotation=0)
+ax5.set_xlabel('Length of network cable groups [m]')
 plt.suptitle('Average % of cable group tests causing violations per network characteristic', fontsize='x-large')
 plt.show()
 
-fig4, ax9 = plt.subplots(figsize=(6, 4))
-df_lamps['% violated'].plot(kind='bar', ax=ax9, color=colors_total[2])
-ax9.set_title('Network lamp connections')
+fig4, ax6 = plt.subplots(figsize=(6, 4))
+df_lamps['% violated'].plot(kind='bar', ax=ax6, color=colors_total[2])
+ax6.set_title('Network lamp connections')
 labels = ['{}'.format(int(x)) for x in df_lamps['Connections']]
-ax9.set_xticklabels(labels, rotation=0)
-ax9.set_xlabel('Number of lamp connections')
-ax9.set_ylabel('Average % of tests causing violation')
+ax6.set_xticklabels(labels, rotation=0)
+ax6.set_xlabel('Number of lamp connections')
+ax6.set_ylabel('Average % of tests causing violation')
 plt.show()
 
 
-# end = time.time()
-# time = end - start
-# print('time: ', round(time, 2), 'sec')
+fig5, ax10 = plt.subplots(figsize=(6, 4))
+df_urban['% violated'].plot(kind='bar', ax=ax10, color=colors_urban)
+ax10.set_title('Level of urbanization')
+labels = [x[:-6] for x in df_urban['Urbanism']]
+ax10.set_xticklabels(labels, rotation=0)
+ax10.set_xlabel('Urbanization')
+ax10.set_ylabel('Average % of tests causing violation')
+plt.show()
+
+
+# print time taken to simulate:
+end = time.time()
+time = end - start
+print('time: ', round(time, 2), 'sec')

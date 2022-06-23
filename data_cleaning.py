@@ -1,6 +1,6 @@
 """
 Author: Elise van Wijngaarden
-Last updated: 18 june 2022
+Last updated: 21 june 2022
 
 INSTRUCTIONS:
 Before performing the Gaia simulations, please run the 'network_types.py'
@@ -16,15 +16,16 @@ The variables under the 'Input' section right below needs to be updated in order
 If the instructions above are met, this script saves a csv file with the cleaned results.
 Afterwards, the Graphics script can be run.
 
-(Time for teh first ~40 network files: 2116 sec > 35min run time)
+Please note that for large amounts of data this script might take a while to complete.
+40 networks / 200 cable groups might take more than 30min.
 """
 
 # ------------------- Input: -------------------------
 # Common Gaia results folders location:
-results_dir = 'C:/Users/Elise/Desktop/Gaia/'
+results_dir = 'C:/resultsdir/'
 
 # Input files location:
-network_files_dir = 'G:/.shortcut-targets-by-id/19-JqZkBCPZFbYYHLjE-rEmM8zRKqqge7/5LEF0 - SIP - Paalstroom/Research/2 Technical Evaluation/Grid/Collected Data/Enexis/Round 2/additional' # TODO: remove afterwards
+network_files_dir = 'C:/filedir/'
 
 # language used in results excels:
 language = 'English'  # 'English' or 'Nederlands'
@@ -217,7 +218,7 @@ for df in dfs.values():
 # Save numeric values in dataframe to csv:
 data = df_combined.apply(pd.to_numeric)
 # data.rename(columns={'Switches and protections': 'Feeder', trafo: 'Transformer'})
-filename = 'cleaned_results_2.csv'
+filename = 'cleaned_results.csv'
 data.to_csv(os.path.join(results_dir, filename))
 print('Saved results to:', filename)
 

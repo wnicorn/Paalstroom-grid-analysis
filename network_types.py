@@ -2,10 +2,16 @@ import pandas as pd
 import math
 import numpy as np
 
+"""
+Author: E van Wijngaarden
+Last updated: 17 june 2022
 
-filename = 'G:/.shortcut-targets-by-id/19-JqZkBCPZFbYYHLjE-rEmM8zRKqqge7/5LEF0 - SIP - Paalstroom/Research/2 Tech'\
-           'nical Evaluation/Grid/Collected Data/Enexis/Round 2/20220307_Results_SL_R2102-02_gG-Light.xlsx'
-df = pd.read_excel(filename, sheet_name='Steekproef', engine='openpyxl', header=0)
+This script was made to observe the variation in network characteristics. 
+It is not required to perform the analysis. 
+"""
+
+file = 'filedir/filename.xlsx'
+df = pd.read_excel(file, sheet_name='Steekproef', engine='openpyxl', header=0)
 df = df[['KABELGROEP', 'NETSTATION_VESTIGING', 'NETSTATION', 'NETSTATION_STEDELIJKHEID', 'NETWERKTYPE', 'KABELGROEP_AANLEGJAAR',
          'KABELGROEP_DECENIUM', 'KABELGROEP_LENGTE', 'NODE_MAX_FOUTSPANNING', 'N_OV_AANSLUITING']]
 
